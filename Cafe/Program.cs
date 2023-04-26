@@ -1,14 +1,39 @@
 ﻿using System;
-using Microsoft.Data.Sqlite;
-using Microsoft.Win32;
+using System.Data.SQLite;
 
 namespace Cafe
 {
-    internal class Program
+    class Program
     {
+        static public SQLiteConnection connection;
+
+        static public bool Connect(string fileName)
+        {
+            try
+            {
+                connection = new SQLiteConnection("Data Source=" + fileName + ";Version=3; FailIfMissing=False");
+                connection.Open();
+                return true;
+            }
+            catch(SQLiteException ex)
+            {
+                Console.WriteLine($"Ошибка доступа к базе данных. Исключение: {ex.Message}");
+                return false;
+            }
+        }
+        
         public static void Main(string[] args)
         {
-            Console.WriteLine("1) Сортировка по калориям\n2) Сортировка по цене\n3) Добавление блюда\n4) Удаление блюда\n5) Изменение блюда");
+            if (Connect("cafe.db"))
+            {
+                Database.GetNewDatabase(connection);
+            }
+            else
+            {
+                Console.WriteLine("Отключено");
+            }
+            Console.WriteLine("1) Сортировка по калориям\n2) Сортировка по цене\n3) Добавление блюда\n" +
+                              "4) Удаление блюда\n5) Изменение блюда");
             Console.Write("Выберите действие: ");
             var action = Convert.ToInt32(Console.ReadLine());
             switch (action)
@@ -34,29 +59,49 @@ namespace Cafe
         static void CaloriesSort()
         {
             Console.Write("Введите максимальное значение калорий: ");
-            var maximum = Convert.ToInt32(Console.ReadLine());
-            using (var connection = new SqliteConnection("Data Source=menu.db"))
+            var limit = Convert.ToInt32(Console.ReadLine());
+            var filteredList = Database.FilteredList(connection, "calories", limit);
+            filteredList.DefaultView.Sort = "calories desc";
+            filteredList = filteredList.DefaultView.ToTable();
+            Console.WriteLine($"Блюда, калорийность которых ниже {limit}:");
+            var summaryCost = 0;
+            for (var i = 0; i <= filteredList.Rows.Count - 1; i++)
             {
-                connection.Open();
-                SqliteCommand command = new SqliteCommand();
-                command.Connection = connection;
-                command.CommandText = $"SELECT * FROM menu WHERE calories <= {maximum}";
-                command.ExecuteNonQuery();
+                var item = filteredList.Rows[i];
+                var name = item[0];
+                var description = item[1];
+                var ingredients = item[2];
+                var calories = item[3];
+                var cost = item[4];
+                summaryCost += (int)cost;
+                Console.WriteLine($"Название блюда: {name}\nОписание: {description}\nИнгредиенты: {ingredients}\n" +
+                                  $"Калории: {calories}\nСтоимость: {cost}\n");
             }
+            Console.WriteLine($"Суммарная стоимость: {summaryCost}");
         }
 
         static void CostSort()
         {
             Console.Write("Введите максимальную цену: ");
-            var maximum = Convert.ToInt32(Console.ReadLine());
-            using (var connection = new SqliteConnection("Data Source=menu.db"))
+            var limit = Convert.ToInt32(Console.ReadLine());
+            var filteredList = Database.FilteredList(connection, "cost", limit);
+            filteredList.DefaultView.Sort = "cost desc";
+            filteredList = filteredList.DefaultView.ToTable();
+            Console.WriteLine($"Блюда, калорийность которых ниже {limit}:");
+            var summaryCalories = 0;
+            for (var i = 0; i <= filteredList.Rows.Count - 1; i++)
             {
-                connection.Open();
-                SqliteCommand command = new SqliteCommand();
-                command.Connection = connection;
-                command.CommandText = $"SELECT * FROM menu WHERE cost <= {maximum}";
-                command.ExecuteNonQuery();
+                var item = filteredList.Rows[i];
+                var name = item[0];
+                var description = item[1];
+                var ingredients = item[2];
+                var calories = item[3];
+                var cost = item[4];
+                summaryCalories += (int)calories;
+                Console.WriteLine($"Название блюда: {name}\nОписание: {description}\nИнгредиенты: {ingredients}\n" +
+                                  $"Калории: {calories}\nСтоимость: {cost}\n");
             }
+            Console.WriteLine($"Суммарная калорийность: {summaryCalories}");
         }
         static void AddName()
         {
@@ -70,28 +115,13 @@ namespace Cafe
             var calories = Convert.ToInt32(Console.ReadLine());
             Console.Write("Введите цену блюда: ");
             var cost = Convert.ToInt32(Console.ReadLine());
-            using (var connection = new SqliteConnection("Data Source=menu.db"))
-            {
-                connection.Open();
-                SqliteCommand command = new SqliteCommand();
-                command.Connection = connection;
-                command.CommandText = "INSERT INTO menu (name, description, ingredients, calories, cost) " +
-                                      $"VALUES ({name}, {description}, {ingredients}, {calories}, {cost})";
-                command.ExecuteNonQuery();
-            }
+            Database.AddNewItem(connection, name, description, ingredients, calories, cost);
         }
         static void DeleteName()
         {
             Console.Write("Введите название блюда для удаления: ");
             var name = Console.ReadLine();
-            using (var connection = new SqliteConnection("Data Source=menu.db"))
-            {
-                connection.Open();
-                SqliteCommand command = new SqliteCommand();
-                command.Connection = connection;
-                command.CommandText = $"DELETE FROM menu WHERE name = {name}";
-                command.ExecuteNonQuery();
-            }
+            Database.DeleteItem(connection, name);
         }
         static void EditName()
         {
@@ -139,19 +169,8 @@ namespace Cafe
                         break;
                 }
             }
-
-            using (var connection = new SqliteConnection("Data Source=menu.db"))
-            {
-                connection.Open();
-                SqliteCommand command = new SqliteCommand();
-                command.Connection = connection;
-                command.CommandText = $"UPDATE menu" +
-                                      $"SET name={editedName}, description={editedDescription}," +
-                                      $"ingredients={editedIngredients}, calories={editedCalories}," +
-                                      $"cost={editedCost}," +
-                                      $"WHERE name={name}";
-                command.ExecuteNonQuery();
-            }
+            Database.EditItem(connection, name, editedName, editedDescription, 
+                editedIngredients, editedCalories, editedCost);
         }
     }
 }
